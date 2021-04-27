@@ -1,6 +1,6 @@
 import tensorflow as tf 
 from tqdm import tqdm 
-from typing import Tuple, List
+from typing import Tuple, List, Dict
 
 
 def _bytes_feature(value):
@@ -68,8 +68,44 @@ class CreateTFRecord(object):
                 example = self.serialize_example(row)
                 writer.write(example)
                          
-                
-                
-        
 
+
+def read_tfrecord_fixed_feat(example, type_dict:Dict, map_fnc:function) -> Dict:
+    def create_tfrec_format(type_dict):
+        LABELED_TFREC_FORMAT = {}
+        for k,v in type_dict:
+            LABELED_TFREC_FORMAT[k] = tf.io.FixedLenFeature([], v)
+        return LABELED_TFREC_FORMAT
+
+    LABELED_TFREC_FORMAT = create_tfrec_format(type_dict)
+    example = tf.io.parse_single_example(example, LABELED_TFREC_FORMAT)
+    res = map_fnc(example)
+    return res
+
+
+def load_tfrec_dataset(filenames, parse_tfrec_fn, ordered=False, AUTO=tf.data.experimental.AUTOTUNE):
+    ignore_order = tf.data.Options()
+    if not ordered:
+        ignore_order.experimental_deterministic = False # disable order,increase speed
+    dataset = tf.data.TFRecordDataset(filenames, num_parallel_reads=AUTO) # automatically interleaves reads from multiple files
+    dataset = dataset.with_options(ignore_order) # uses data as soon as it streams in, rather than in its original order
+    dataset = dataset.map(parse_tfrec_fn, num_parallel_calls=AUTO)
+    return dataset
+
+def get_tfrecord_training_dataset(filenames, parse_tfrec_fn, batch_size, map_fn, AUTO=tf.data.experimental.AUTOTUNE):
+    dataset = load_tfrec_dataset(filenames, parse_tfrec_fn,ordered=False, AUTO=AUTO)
+    dataset = dataset.repeat() # the training dataset must repeat for several epochs
+    if map_fn is not None:
+        dataset = dataset.map(map_fn, num_parallel_calls=AUTO)
+    dataset = dataset.batch(batch_size)
+    dataset = dataset.prefetch(AUTO) # prefetch next batch while training (autotune prefetch buffer size)
+    return dataset
+
+def get_tfrecord_validation_dataset(filenames, parse_tfrec_fn, batch_size, map_fn, cache=False, AUTO=tf.data.experimental.AUTOTUNE):
+    dataset = load_tfrec_dataset(filenames, parse_tfrec_fn,ordered=True, AUTO=AUTO)
+    dataset = dataset.batch(batch_size)
+    dataset = dataset.prefetch(AUTO) # prefetch next batch while training (autotune prefetch buffer size)
+    if cache:
+        dataset = dataset.cache()
+    return dataset
 
