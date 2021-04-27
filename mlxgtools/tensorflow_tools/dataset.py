@@ -70,7 +70,7 @@ class CreateTFRecord(object):
                          
 
 
-def read_tfrecord_fixed_feat(example, type_dict:Dict, map_fnc:function) -> Dict:
+def read_tfrecord_fixed_feat(example, type_dict:Dict, map_fnc) -> Dict:
     def create_tfrec_format(type_dict):
         LABELED_TFREC_FORMAT = {}
         for k,v in type_dict:
