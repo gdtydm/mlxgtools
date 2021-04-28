@@ -1,6 +1,7 @@
 import tensorflow as tf 
 from tqdm import tqdm 
 from typing import Tuple, List, Dict
+from abc import ABCMeta, abstractmethod
 
 
 def _bytes_feature(value):
@@ -69,43 +70,65 @@ class CreateTFRecord(object):
                 writer.write(example)
                          
 
+class ReadTFRecFile(object):
+    def __init__(self, type_dict, **kwargs):
+        self.type_dict = type_dict
+        self.batch_size = kwargs.get(batch_size, 64)
+        self.auto = tf.data.experimental.AUTOTUNE 
 
-def read_tfrecord_fixed_feat(example, type_dict:Dict, map_fnc) -> Dict:
-    def create_tfrec_format(type_dict):
-        LABELED_TFREC_FORMAT = {}
-        for k,v in type_dict:
-            LABELED_TFREC_FORMAT[k] = tf.io.FixedLenFeature([], v)
-        return LABELED_TFREC_FORMAT
+    def read_tfrecord_fixed_feat(self, example):
+        def create_tfrec_format():
+            LABELED_TFREC_FORMAT = {}
+            for k,v in self.type_dict:
+                LABELED_TFREC_FORMAT[k] = tf.io.FixedLenFeature([], v)
+            return LABELED_TFREC_FORMAT
 
-    LABELED_TFREC_FORMAT = create_tfrec_format(type_dict)
-    example = tf.io.parse_single_example(example, LABELED_TFREC_FORMAT)
-    res = map_fnc(example)
-    return res
+        LABELED_TFREC_FORMAT = create_tfrec_format()
+        example = tf.io.parse_single_example(example, LABELED_TFREC_FORMAT)
+        return example
 
+    def map_fn(self, example):
+        return example 
+    
+    def load_tfrec_dataset(self, filenames, ordered=False):
+        ignore_order = tf.data.Options()
+        if not ordered:
+            ignore_order.experimental_deterministic = False # disable order,increase speed
+        dataset = tf.data.TFRecordDataset(filenames, num_parallel_reads=self.auto) # automatically interleaves reads from multiple files
+        dataset = dataset.with_options(ignore_order) # uses data as soon as it streams in, rather than in its original order
+        dataset = dataset.map(self.read_tfrecord_fixed_feat, num_parallel_calls=self.auto)
+        return dataset
 
-def load_tfrec_dataset(filenames, parse_tfrec_fn, ordered=False, AUTO=tf.data.experimental.AUTOTUNE):
-    ignore_order = tf.data.Options()
-    if not ordered:
-        ignore_order.experimental_deterministic = False # disable order,increase speed
-    dataset = tf.data.TFRecordDataset(filenames, num_parallel_reads=AUTO) # automatically interleaves reads from multiple files
-    dataset = dataset.with_options(ignore_order) # uses data as soon as it streams in, rather than in its original order
-    dataset = dataset.map(parse_tfrec_fn, num_parallel_calls=AUTO)
-    return dataset
+    def get_dataset(self, filenames, **kwargs):
+        dataset = self.load_tfrec_dataset(filenames,ordered=kwargs.get('ordered', True))
 
-def get_tfrecord_training_dataset(filenames, parse_tfrec_fn, batch_size, map_fn, AUTO=tf.data.experimental.AUTOTUNE):
-    dataset = load_tfrec_dataset(filenames, parse_tfrec_fn,ordered=False, AUTO=AUTO)
-    dataset = dataset.repeat() # the training dataset must repeat for several epochs
-    if map_fn is not None:
-        dataset = dataset.map(map_fn, num_parallel_calls=AUTO)
-    dataset = dataset.batch(batch_size)
-    dataset = dataset.prefetch(AUTO) # prefetch next batch while training (autotune prefetch buffer size)
-    return dataset
+        if kwargs.get('repeat', False):
+            dataset = dataset.repeat() # the training dataset must repeat for several epochs 
 
-def get_tfrecord_validation_dataset(filenames, parse_tfrec_fn, batch_size, map_fn, cache=False, AUTO=tf.data.experimental.AUTOTUNE):
-    dataset = load_tfrec_dataset(filenames, parse_tfrec_fn,ordered=True, AUTO=AUTO)
-    dataset = dataset.batch(batch_size)
-    dataset = dataset.prefetch(AUTO) # prefetch next batch while training (autotune prefetch buffer size)
-    if cache:
-        dataset = dataset.cache()
-    return dataset
+        batch_size =  kwargs.get('batch_size',None)
+        if batch_size  is None:
+            batch_size = self.batch_size
 
+        dataset = dataset.map(self.map_fn)
+        if kwargs.get('shuffle', False):
+            dataset = dataset.shuffle(kwargs.get('shuffle_size', batch_size*10))
+
+        dataset = dataset.batch(batch_size) 
+        dataset = dataset.prefetch(self.auto)
+        if kwargs.get('cache', False):
+            dataset = dataset.cache()
+        return dataset
+
+    def get_train_dataset(self, filenames, ordered=False, shuffle=True, repeat=True, cache=False, batch_size=None, **kwargs):
+        dataset = self.get_dataset(filenames, ordered=ordered, shuffle=shuffle, repeat=repeat, cache=cache, batch_size=batch_size, **kwargs)
+        return dataset
+
+    def get_valid_dataset(self, filenames, ordered=True, shuffle=False, repeat=False, cache=True, batch_size=None, **kwargs):
+        dataset = self.get_dataset(filenames, ordered=ordered, shuffle=shuffle, repeat=repeat, cache=cache, batch_size=batch_size, **kwargs)
+        return dataset
+
+    def check_parsed(self, dataset, n=5):
+        for example in dataset.take(n):
+            print(">>>" * 7)
+            print(example)
+            print("<<<" * 7)
