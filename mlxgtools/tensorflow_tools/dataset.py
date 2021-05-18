@@ -1,7 +1,7 @@
 import tensorflow as tf 
 from tqdm import tqdm 
 from typing import Tuple, List, Dict
-
+from functools import partial
 
 def _bytes_feature(value):
     """Returns a bytes_list from a string / byte."""
@@ -101,7 +101,7 @@ def get_tfrecord_training_dataset(filenames, parse_tfrec_fn, batch_size, map_fn,
     dataset = dataset.prefetch(AUTO) # prefetch next batch while training (autotune prefetch buffer size)
     return dataset
 
-def get_tfrecord_validation_dataset(filenames, parse_tfrec_fn, batch_size, map_fn, cache=False, AUTO=tf.data.experimental.AUTOTUNE):
+def get_tfrecord_validation_dataset(filenames, parse_tfrec_fn, batch_size, cache=False, AUTO=tf.data.experimental.AUTOTUNE):
     dataset = load_tfrec_dataset(filenames, parse_tfrec_fn,ordered=True, AUTO=AUTO)
     dataset = dataset.batch(batch_size)
     dataset = dataset.prefetch(AUTO) # prefetch next batch while training (autotune prefetch buffer size)
