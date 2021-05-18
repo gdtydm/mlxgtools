@@ -4,6 +4,9 @@ import json
 import copy 
 from multiprocessing import Pool
 from datetime import datetime 
+global parallel_cnt
+global parallel_num
+
 
 
 class ArgsClass(object):
@@ -64,11 +67,16 @@ def get_gcs_path_of_kaggle_data(data_name, is_private=False):
 
 
 def multiprocess_fnc_without_res(fn, args, core):
+    global parallel_cnt 
+    global parallel_num 
     parallel_cnt = 0
     parallel_num = len(args)
+
     def call_back(rst):
+        global parallel_cnt 
+        global parallel_num 
         parallel_cnt += 1
-        print('%s, %d / %d done!' % (datetime.datetime.now(), parallel_cnt, parallel_num))
+        print('%s, %d / %d done!' % (datetime.now(), parallel_cnt, parallel_num))
 
     pool = Pool(core)
     for arg in args:
@@ -79,11 +87,15 @@ def multiprocess_fnc_without_res(fn, args, core):
     pool.join()
 
 def multprocess_fnc(fn, args, core):
+    global parallel_cnt 
+    global parallel_num 
     parallel_cnt = 0
     parallel_num = len(args)
     def call_back(rst):
+        global parallel_cnt 
+        global parallel_num 
         parallel_cnt += 1
-        print('%s, %d / %d done!' % (datetime.datetime.now(), parallel_cnt, parallel_num))
+        print('%s, %d / %d done!' % (datetime.now(), parallel_cnt, parallel_num))
 
 
     serverid_num = len(args)
