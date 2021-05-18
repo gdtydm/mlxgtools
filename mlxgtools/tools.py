@@ -72,6 +72,8 @@ def multiprocess_fnc_without_res(fn, args, core):
 
     pool = Pool(core)
     for arg in args:
+        if not isinstance(arg, tuple):
+            arg = (arg, )
         pool.apply_async(fn, args=arg,  callback=call_back)
     pool.close()
     pool.join()
@@ -89,8 +91,10 @@ def multprocess_fnc(fn, args, core):
     record_num = 0 # ###成功运行
     empty_num = 0   # ###成功运行但是结果为空
     error_num = 0  # ###运行失败
-    pool = Pool(4)
+    pool = Pool(core)
     for arg in args:
+        if not isinstance(arg, tuple):
+            arg = (arg, )
         record_data.append(pool.apply_async(fn, args=arg, callback=call_back))
     pool.close()
     pool.join()
